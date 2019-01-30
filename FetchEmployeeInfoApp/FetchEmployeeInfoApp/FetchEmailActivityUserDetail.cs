@@ -55,6 +55,8 @@ namespace FetchEmployeeInfoApp
                 }
                 else
                 {
+                    Console.WriteLine($"Response Status: {downloadResponse.StatusCode}");
+                    Console.WriteLine($"Error Reason: {downloadResponse.ReasonPhrase}");
                     throw new Exception();//Throw exception and re-try with queue (max.5)
                 }
             }
