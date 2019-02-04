@@ -9,14 +9,17 @@
         public string TypeString { get; set; }
 
         public ReportPeriod Period { get; set; }
+        public int RetryCount { get; set; }
 
         public ActivityReportRequest() { }
 
-        public ActivityReportRequest(ReportType type, ReportPeriod period)
+        //retryCount is 0 if we don't pass retryCount argument to make instance
+        public ActivityReportRequest(ReportType type, ReportPeriod period, int retryCount = 0)
         {
             Type = type;
             TypeString = type.ToString("g");
             Period = period;
+            RetryCount = retryCount;
         }
     }
 
