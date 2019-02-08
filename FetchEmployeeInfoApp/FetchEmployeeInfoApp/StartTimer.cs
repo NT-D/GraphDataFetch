@@ -8,7 +8,6 @@ namespace FetchEmployeeInfoApp
 {
     public static class StartTimer
     {
-        private static ReportPeriod period = ReportPeriod.D30;
         private static int sleepInterval = 10000;
 
         [FunctionName(nameof(StartTimer))]
@@ -22,7 +21,7 @@ namespace FetchEmployeeInfoApp
             //Send report download request
             foreach (ReportType type in Enum.GetValues(typeof(ReportType)))
             {
-                reportQueueMessages.Add(new ActivityReportRequest(type, period));
+                reportQueueMessages.Add(new ActivityReportRequest(type));
                 //Because report file is sometimes huge, we send each request after sleep
                 Thread.Sleep(sleepInterval);
             }

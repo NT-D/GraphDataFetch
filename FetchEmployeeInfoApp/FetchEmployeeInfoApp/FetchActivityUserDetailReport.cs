@@ -32,6 +32,8 @@ namespace FetchEmployeeInfoApp
             ILogger log)
         {
             log.LogInformation($"C# Queue trigger function processed: {inputQueueMessage}");
+            //We need YYYY-MM-DD foramt
+            string todayStringUtc = DateTime.Today.ToString("yyyy-MM-dd");
 
             if (string.IsNullOrEmpty(accessToken))
             {
@@ -39,7 +41,7 @@ namespace FetchEmployeeInfoApp
             }
 
             //Generate HTTP Request
-            string requestQuery = GenerateReportUrl(inputQueueMessage.Type, inputQueueMessage.Period);
+            string requestQuery = GenerateReportUrl(inputQueueMessage.Type, todayStringUtc);
             var request = new HttpRequestMessage()
             {
                 RequestUri = new Uri(requestQuery),
@@ -58,7 +60,7 @@ namespace FetchEmployeeInfoApp
                 var downloadResponse = await downloadClient.GetAsync(downloadUrl);
                 if (downloadResponse.IsSuccessStatusCode)
                 {
-                    await UploadReport(inputQueueMessage.TypeString, downloadResponse);
+                    await UploadReport(inputQueueMessage.TypeString, downloadResponse, todayStringUtc);
                 }
                 //If we got 427 status (TooManyRequests), we need to handle Throttling. https://docs.microsoft.com/en-us/graph/throttling
                 else if (downloadResponse.StatusCode == HttpStatusCode.TooManyRequests)
@@ -75,7 +77,7 @@ namespace FetchEmployeeInfoApp
                         sleepTime = new TimeSpan(0, 0, 10 + inputQueueMessage.RetryCount * 10);
                     }
                     Thread.Sleep(sleepTime);
-                    retryQueueMessages.Add(new ActivityReportRequest(inputQueueMessage.Type, inputQueueMessage.Period, inputQueueMessage.RetryCount++));
+                    retryQueueMessages.Add(new ActivityReportRequest(inputQueueMessage.Type, inputQueueMessage.RetryCount++));
                 }
                 else
                 {
@@ -87,30 +89,29 @@ namespace FetchEmployeeInfoApp
 
         }
 
-        private static string GenerateReportUrl(ReportType type, ReportPeriod period)
+        private static string GenerateReportUrl(ReportType type, string utcToday)
         {
-            string reportPeriod = period.ToString("g");//Input enum as string ex. D7
             switch (type)
             {
                 case ReportType.Exo:
-                    return $"https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(period='{reportPeriod}')";
+                    return $"https://graph.microsoft.com/v1.0/reports/getEmailActivityUserDetail(date={utcToday})";
                 case ReportType.OneDrive:
-                    return $"https://graph.microsoft.com/v1.0/reports/getOneDriveActivityUserDetail(period='{reportPeriod}')";
+                    return $"https://graph.microsoft.com/v1.0/reports/getOneDriveActivityUserDetail(date={utcToday})";
                 case ReportType.Teams:
-                    return $"https://graph.microsoft.com/v1.0/reports/getTeamsUserActivityUserDetail(period='{reportPeriod}')";
+                    return $"https://graph.microsoft.com/v1.0/reports/getTeamsUserActivityUserDetail(date={utcToday})";
                 case ReportType.Sfb:
                 default:
-                    return $"https://graph.microsoft.com/v1.0/reports/getSkypeForBusinessActivityUserDetail(period='{reportPeriod}')";
+                    return $"https://graph.microsoft.com/v1.0/reports/getSkypeForBusinessActivityUserDetail(date={utcToday})";
             }
         }
 
-        private static async Task UploadReport(string reportTypeString, HttpResponseMessage downloadResponse)
+        private static async Task UploadReport(string reportTypeString, HttpResponseMessage downloadResponse, string utcToday)
         {
             var downloadedReport = await downloadResponse.Content.ReadAsStringAsync();
 
             CloudBlobContainer blobContainer = blobClient.GetContainerReference("reports");
             await blobContainer.CreateIfNotExistsAsync();
-            CloudBlockBlob blob = blobContainer.GetBlockBlobReference($"{reportTypeString}/{DateTime.Today.ToString("yyyy-MM-dd")}.csv");
+            CloudBlockBlob blob = blobContainer.GetBlockBlobReference($"{reportTypeString}/{utcToday}.csv");
             await blob.UploadTextAsync(downloadedReport);
         }
     }
