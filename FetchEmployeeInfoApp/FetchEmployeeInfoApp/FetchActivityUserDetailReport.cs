@@ -110,7 +110,6 @@ namespace FetchEmployeeInfoApp
 
             CloudBlobContainer blobContainer = blobClient.GetContainerReference("reports");
             await blobContainer.CreateIfNotExistsAsync();
-            Console.WriteLine($"{DateTime.Today.ToString("s")}.csv");
             CloudBlockBlob blob = blobContainer.GetBlockBlobReference($"{reportTypeString}/{DateTime.Today.ToString("yyyy-MM-dd")}.csv");
             await blob.UploadTextAsync(downloadedReport);
         }
