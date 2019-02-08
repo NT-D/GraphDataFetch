@@ -7,22 +7,27 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using FetchEmployeeInfoApp.Utils;
 using FetchEmployeeInfoApp.Models.Queue;
-using System.IO;
 using System.Net;
+using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Blob;
 
 namespace FetchEmployeeInfoApp
 {
-    public static class FetchEmailActivityUserDetail
+    public static class FetchActivityUserDetailReport
     {
         //Tips: https://docs.microsoft.com/en-us/azure/azure-functions/manage-connections
         private static HttpClient graphHttpClient = new HttpClient();
         private static HttpClient downloadClient = new HttpClient();
+
+        //Setup storage client client
+        private static CloudStorageAccount storageAccount = CloudStorageAccount.Parse(Settings.connectionString);
+        private static CloudBlobClient blobClient = storageAccount.CreateCloudBlobClient();
+
         private static string accessToken;
 
-        [FunctionName(nameof(FetchEmailActivityUserDetail))]
+        [FunctionName(nameof(FetchActivityUserDetailReport))]
         public static async Task Run(
             [QueueTrigger(Settings.activityReportQueueName, Connection = "")]ActivityReportRequest inputQueueMessage,
-            [Blob(Settings.ReportBlob, FileAccess.Write)] TextWriter reportFile,
             [Queue(Settings.activityReportQueueName, Connection = "")] ICollector<ActivityReportRequest> retryQueueMessages,
             ILogger log)
         {
@@ -53,8 +58,7 @@ namespace FetchEmployeeInfoApp
                 var downloadResponse = await downloadClient.GetAsync(downloadUrl);
                 if (downloadResponse.IsSuccessStatusCode)
                 {
-                    var downloadedReport = await downloadResponse.Content.ReadAsStringAsync();
-                    await reportFile.WriteAsync(downloadedReport);
+                    await UploadReport(inputQueueMessage.TypeString, downloadResponse);
                 }
                 //If we got 427 status (TooManyRequests), we need to handle Throttling. https://docs.microsoft.com/en-us/graph/throttling
                 else if (downloadResponse.StatusCode == HttpStatusCode.TooManyRequests)
@@ -98,6 +102,17 @@ namespace FetchEmployeeInfoApp
                 default:
                     return $"https://graph.microsoft.com/v1.0/reports/getSkypeForBusinessActivityUserDetail(period='{reportPeriod}')";
             }
+        }
+
+        private static async Task UploadReport(string reportTypeString, HttpResponseMessage downloadResponse)
+        {
+            var downloadedReport = await downloadResponse.Content.ReadAsStringAsync();
+
+            CloudBlobContainer blobContainer = blobClient.GetContainerReference("reports");
+            await blobContainer.CreateIfNotExistsAsync();
+            Console.WriteLine($"{DateTime.Today.ToString("s")}.csv");
+            CloudBlockBlob blob = blobContainer.GetBlockBlobReference($"{reportTypeString}/{DateTime.Today.ToString("yyyy-MM-dd")}.csv");
+            await blob.UploadTextAsync(downloadedReport);
         }
     }
 }

@@ -4,16 +4,14 @@ namespace FetchEmployeeInfoApp
 {
     public static class Settings
     {
+        public static readonly string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage", EnvironmentVariableTarget.Process);
+
         //Queue names for request
         public const string eventQueueName = "event-sync";
         public const string activityReportQueueName = "activity-report-sync";
 
         //Tables for storing data
         public const string eventTableName = "eventTable";
-
-        //Blob containers for reports
-        //Using json payload binding https://docs.microsoft.com/en-us/azure/azure-functions/functions-triggers-bindings#binding-expressions---json-payloads
-        public const string ReportBlob = "reports/{TypeString}/{DateTime}.csv";
 
         /* How to debug
          * Please set your local.settings.json with following keys.
