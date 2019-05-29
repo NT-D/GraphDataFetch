@@ -64,7 +64,13 @@ namespace FetchEmployeeInfoApp
                 var responseData = await response.Content.ReadAsAsync<CalendarViewResponse>();
 
                 //Pass @odata.nextlink to storage queue for requesting MS graph with multiple Azure Functions node
-                if (!string.IsNullOrEmpty(responseData.odatanextLink)) pagingQueueItems.Add(new CalendarSyncRequest(inputQueueItem.UserId, responseData.odatanextLink) { });
+                if (!string.IsNullOrEmpty(responseData.odatanextLink)) pagingQueueItems.Add(new CalendarSyncRequest()
+                {
+                    UserId = inputQueueItem.UserId,
+                    Url = responseData.odatanextLink,
+                    Start = DateTime.Now.AddDays(-1),
+                    End = DateTime.Now
+                });
 
                 foreach (Event eventData in responseData.value)
                 {
@@ -75,7 +81,7 @@ namespace FetchEmployeeInfoApp
 
         private static string CreateRequestQuery(CalendarSyncRequest inputQueueItem)
         {
-            return $"https://graph.microsoft.com/v1.0/me/calendarView?startDateTime={inputQueueItem.Start.ToString("s")}&endDateTime={inputQueueItem.End.ToString("s")}&$select=iCalUId,subject,location,organizer,onlineMeetingUrl,start,end&$filter=type eq \'singleInstance\'";
+            return $"https://graph.microsoft.com/v1.0/users/{inputQueueItem.UserId}/calendarView?startDateTime={inputQueueItem.Start.ToString("s")}&endDateTime={inputQueueItem.End.ToString("s")}&$select=iCalUId,subject,location,organizer,onlineMeetingUrl,start,end&$filter=type eq \'singleInstance\'";
         }
     }
 }

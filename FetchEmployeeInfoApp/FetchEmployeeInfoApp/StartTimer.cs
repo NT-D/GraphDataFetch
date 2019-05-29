@@ -57,7 +57,7 @@ namespace FetchEmployeeInfoApp
                 await table.CreateIfNotExistsAsync();
             }
 
-            foreach(string queueName in Settings.tablesForFuction)
+            foreach(string queueName in Settings.queuesForFunction)
             {
                 CloudQueue queue = queueClient.GetQueueReference(queueName);
                 await queue.CreateIfNotExistsAsync();

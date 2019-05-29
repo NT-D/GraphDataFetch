@@ -10,6 +10,6 @@ namespace FetchEmployeeInfoApp.Models.Graph
     {
         [JsonProperty(propertyName: "@odata.nextLink")]
         public string NextLink { get; set; }
-        public User[] Users { get; set; }
+        public User[] value { get; set; }
     }
 }

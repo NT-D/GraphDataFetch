@@ -65,12 +65,18 @@ namespace FetchEmployeeInfoApp
                 //Pass @odata.nextlink to storage queue for requesting MS graph with multiple Azure Functions node
                 if (!string.IsNullOrEmpty(responseData.NextLink)) pagingQueueItems.Add(new UserSyncRequest() { Url = responseData.NextLink });
 
-                foreach (User userData in responseData.Users)
+                foreach (User userData in responseData.value)
                 {
                     //Save user data to Storage Table
                     userEntities.Add(new UserEntity(userData));
                     //Send queue message for fetching calendar items
-                    calendarQueueItems.Add(new CalendarSyncRequest(userData.Id));
+                    calendarQueueItems.Add(new CalendarSyncRequest()
+                    {
+                        UserId = userData.Id,
+                        Start = DateTime.Now.AddDays(-1),
+                        End = DateTime.Now
+                    }
+                    );
                 }
             }
         }
