@@ -7,6 +7,9 @@ using FetchEmployeeInfoApp.Models.Table;
 using FetchEmployeeInfoApp.Models.Graph;
 using System.Threading.Tasks;
 using System.Net.Http.Headers;
+using FetchEmployeeInfoApp.Utils;
+using System.Net;
+using Microsoft.Graph;
 
 namespace FetchEmployeeInfoApp
 {
@@ -14,15 +17,20 @@ namespace FetchEmployeeInfoApp
     {
         //Tips: https://docs.microsoft.com/en-us/azure/azure-functions/manage-connections
         private static HttpClient graphHttpClient = new HttpClient();
+        private static string accessToken;
+        private static readonly int sleepInterval = 5000;
 
         [FunctionName(nameof(FetchEvents))]
         public static async Task Run(
-            [QueueTrigger(Settings.eventQueueName, Connection = "")]CalendarSyncStartRequest inputQueueItem,
-            [Queue(Settings.eventQueueName, Connection = "")] ICollector<CalendarSyncStartRequest> pagingQueueItem,
-            [Table(Settings.eventTableName, Connection = "")]ICollector<EventEntity> events,
+            [QueueTrigger(Settings.eventQueueName, Connection = "")]CalendarSyncRequest inputQueueItem,
+            [Queue(Settings.eventQueueName, Connection = "")] ICollector<CalendarSyncRequest> pagingQueueItems,
+            [Table(Settings.eventTableName, Connection = "")]ICollector<EventEntity> eventEntities,
             ILogger log)
         {
             log.LogInformation($"C# Queue trigger function processed: {inputQueueItem}");
+
+            //If app doesn't have access token yet, fetch it from Azure AD
+            if (string.IsNullOrEmpty(accessToken)) accessToken = await AccessTokenHelper.FetchAccessToken();
 
             /*
              * Create Http Request
@@ -30,43 +38,44 @@ namespace FetchEmployeeInfoApp
              * For resolving this, we create HttpRequestMessage for each request.
              * https://stackoverflow.com/questions/23521626/modify-request-headers-per-request-c-sharp-httpclient-pcl
              * */
-            string requestQuery = String.IsNullOrEmpty(inputQueueItem.requestUrl) ? CreateRequestQuery(inputQueueItem) : inputQueueItem.requestUrl;
+            string requestQuery = string.IsNullOrEmpty(inputQueueItem.Url) ? CreateRequestQuery(inputQueueItem) : inputQueueItem.Url;
             var request = new HttpRequestMessage()
             {
                 RequestUri = new Uri(requestQuery),
                 Method = HttpMethod.Get
             };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", inputQueueItem.accessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-            //Send http request to Microsoft graph
             HttpResponseMessage response = await graphHttpClient.SendAsync(request);
-            if (response.IsSuccessStatusCode)
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                //When token expire after 60 min, we need to get new token
+                accessToken = await AccessTokenHelper.FetchAccessToken();
+                //App will re-try with same queue message
+                pagingQueueItems.Add(inputQueueItem);
+            }
+            else if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                System.Threading.Thread.Sleep(sleepInterval);
+                pagingQueueItems.Add(inputQueueItem);
+            }
+            else if (response.IsSuccessStatusCode)
             {
                 var responseData = await response.Content.ReadAsAsync<CalendarViewResponse>();
-                foreach (var eventData in responseData.value)
+
+                //Pass @odata.nextlink to storage queue for requesting MS graph with multiple Azure Functions node
+                if (!string.IsNullOrEmpty(responseData.odatanextLink)) pagingQueueItems.Add(new CalendarSyncRequest(inputQueueItem.UserId, responseData.odatanextLink) { });
+
+                foreach (Event eventData in responseData.value)
                 {
-                    var entity = new EventEntity()
-                    {
-                        PartitionKey = inputQueueItem.userId,
-                        RowKey = eventData.ICalUId,
-                        Subject = eventData.Subject,
-                        Location = eventData.Location.DisplayName,
-                        LocationEmailAddress = eventData.Location.LocationEmailAddress,
-                        OwnerEmailAddress = eventData.Organizer.EmailAddress.Address,
-                        IsOnlineMeetingUrl = !string.IsNullOrEmpty(eventData.OnlineMeetingUrl),
-                        //TODO: Need to convert to UTC
-                        UtcStartTime = DateTime.Parse(eventData.Start.DateTime),
-                        UtcEndTime = DateTime.Parse(eventData.End.DateTime)
-                    };
-                    events.Add(entity);
+                    eventEntities.Add(new EventEntity(eventData, inputQueueItem.UserId));
                 }
-                if (!string.IsNullOrEmpty(responseData.odatanextLink)) pagingQueueItem.Add(new CalendarSyncStartRequest() { userId = inputQueueItem.userId, accessToken = inputQueueItem.accessToken, requestUrl = responseData.odatanextLink });
             }
         }
 
-        private static string CreateRequestQuery(CalendarSyncStartRequest inputQueueItem)
+        private static string CreateRequestQuery(CalendarSyncRequest inputQueueItem)
         {
-            return $"https://graph.microsoft.com/v1.0/me/calendarView?startDateTime={inputQueueItem.start.ToString("s")}&endDateTime={inputQueueItem.end.ToString("s")}&$select=iCalUId,subject,location,organizer,onlineMeetingUrl,start,end&$filter=type eq \'singleInstance\'";
+            return $"https://graph.microsoft.com/v1.0/me/calendarView?startDateTime={inputQueueItem.Start.ToString("s")}&endDateTime={inputQueueItem.End.ToString("s")}&$select=iCalUId,subject,location,organizer,onlineMeetingUrl,start,end&$filter=type eq \'singleInstance\'";
         }
     }
 }

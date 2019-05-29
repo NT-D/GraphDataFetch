@@ -107,11 +107,10 @@ namespace FetchEmployeeInfoApp
 
         private static async Task UploadReport(string reportTypeString, HttpResponseMessage downloadResponse, string utcToday)
         {
-            var downloadedReport = await downloadResponse.Content.ReadAsStringAsync();
-
-            CloudBlobContainer blobContainer = blobClient.GetContainerReference("reports");
-            await blobContainer.CreateIfNotExistsAsync();
+            CloudBlobContainer blobContainer = blobClient.GetContainerReference(Settings.reportContainer);
             CloudBlockBlob blob = blobContainer.GetBlockBlobReference($"{reportTypeString}/{utcToday}.csv");
+
+            var downloadedReport = await downloadResponse.Content.ReadAsStringAsync();
             await blob.UploadTextAsync(downloadedReport);
         }
     }
